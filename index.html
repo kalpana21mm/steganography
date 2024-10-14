@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Steganography</title>
+    <style>
+ 
+
+        body {
+            font-family: Comic Sans MS, sans-serif;
+            text-align: center;
+            background-image: url('./bg_img.jpg');
+            background-repeat: no-repeat;
+            background-size: cover;
+        }
+        input, textarea {
+            margin: 10px;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Steganography: Secret message hiding</h1>
+
+    <form id="steganography-form" method="POST" enctype="multipart/form-data">
+        <label for="image">Upload an Image:</label>
+        <input type="file" id="image" name="image" accept="image/*"><br><br>
+
+        <label for="audio">Upload an Audio File:</label>
+        <input type="file" id="audio" name="audio" accept="audio/*"><br><br>
+
+        <label for="message">Enter the Message to Hide:</label><br>
+        <textarea id="message" name="message" rows="4" cols="50" required></textarea><br><br>
+
+        <button type="button" onclick="hideMessage()">Hide Message</button><br><br>
+    </form>
+
+    <h2>Download Encoded File</h2>
+    <a id="download-link" style="display:none;" download="encoded_file">Download File</a><br>
+
+    <h2>Decode the Hidden Message</h2>
+    <button type="button" onclick="decodeMessage()">Decode Message from File</button><br>
+    <p id="decoded-message"></p>
+
+    <script>
+        let encodedImage = null;
+        let encodedAudio = null;
+
+        function hideMessage() {
+            const imageInput = document.getElementById('image');
+            const audioInput = document.getElementById('audio');
+            const message = document.getElementById('message').value;
+
+            if (imageInput.files.length === 0 && audioInput.files.length === 0) {
+                alert("Please upload either an image or an audio file.");
+                return;
+            }
+
+            if (imageInput.files.length > 0) {
+                encodeImageMessage(imageInput, message);
+            }
+
+            if (audioInput.files.length > 0) {
+                encodeAudioMessage(audioInput, message);
+            }
+        }
+
+        function encodeImageMessage(imageInput, message) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    
+                    let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    let pixels = imgData.data;
+
+                    let binaryMessage = message.split('').map(c => c.charCodeAt(0).toString(2).padStart(8, '0')).join('') + '00000000';
+                    let messageIndex = 0;
+
+                    for (let i = 0; i < pixels.length; i += 4) {
+                        if (messageIndex < binaryMessage.length) {
+                            let binaryPixel = pixels[i].toString(2).padStart(8, '0');
+                            binaryPixel = binaryPixel.slice(0, 7) + binaryMessage[messageIndex];
+                            pixels[i] = parseInt(binaryPixel, 2);
+                            messageIndex++;
+                        }
+                    }
+
+                    ctx.putImageData(imgData, 0, 0);
+
+                    encodedImage = canvas.toDataURL('image/png');
+                    const downloadLink = document.getElementById('download-link');
+                    downloadLink.href = encodedImage;
+                    downloadLink.download = "encoded_image.png";
+                    downloadLink.style.display = 'inline';
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(imageInput.files[0]);
+        }
+
+        function encodeAudioMessage(audioInput, message) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const audioBuffer = event.target.result;
+
+                let binaryMessage = message.split('').map(c => c.charCodeAt(0).toString(2).padStart(8, '0')).join('') + '00000000';
+                let audioBytes = new Uint8Array(audioBuffer);
+                
+                let messageIndex = 0;
+                for (let i = 0; i < audioBytes.length && messageIndex < binaryMessage.length; i++) {
+                    audioBytes[i] = (audioBytes[i] & 0xFE) | parseInt(binaryMessage[messageIndex]);
+                    messageIndex++;
+                }
+
+                const blob = new Blob([audioBytes], { type: 'audio/wav' });
+                const url = URL.createObjectURL(blob);
+
+                encodedAudio = url;
+                const downloadLink = document.getElementById('download-link');
+                downloadLink.href = encodedAudio;
+                downloadLink.download = "encoded_audio.wav";
+                downloadLink.style.display = 'inline';
+            };
+            reader.readAsArrayBuffer(audioInput.files[0]);
+        }
+
+        function decodeMessage() {
+            const imageInput = document.getElementById('image');
+            const audioInput = document.getElementById('audio');
+
+            if (encodedImage) {
+                decodeImageMessage(encodedImage);
+            }
+
+            if (encodedAudio) {
+                decodeAudioMessage(encodedAudio);
+            }
+        }
+
+        function decodeImageMessage(encodedImage) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+
+                let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                let pixels = imgData.data;
+
+                let binaryMessage = '';
+                for (let i = 0; i < pixels.length; i += 4) {
+                    let binaryPixel = pixels[i].toString(2).padStart(8, '0');
+                    binaryMessage += binaryPixel[7];
+                }
+
+                let decodedMessage = '';
+                for (let i = 0; i < binaryMessage.length; i += 8) {
+                    const byte = binaryMessage.slice(i, i + 8);
+                    if (byte === '00000000') break;
+                    decodedMessage += String.fromCharCode(parseInt(byte, 2));
+                }
+
+                document.getElementById('decoded-message').textContent = decodedMessage;
+            };
+            img.src = encodedImage;
+        }
+
+        function decodeAudioMessage(encodedAudio) {
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", encodedAudio, true);
+            xhr.responseType = "arraybuffer";
+            xhr.onload = function() {
+                const audioBuffer = xhr.response;
+                let audioBytes = new Uint8Array(audioBuffer);
+
+                let binaryMessage = '';
+                for (let i = 0; i < audioBytes.length; i++) {
+                    binaryMessage += (audioBytes[i] & 1).toString();
+                }
+
+                let decodedMessage = '';
+                for (let i = 0; i < binaryMessage.length; i += 8) {
+                    const byte = binaryMessage.slice(i, i + 8);
+                    if (byte === '00000000') break;
+                    decodedMessage += String.fromCharCode(parseInt(byte, 2));
+                }
+
+                document.getElementById('decoded-message').textContent = decodedMessage;
+            };
+            xhr.send();
+        }
+    </script>
+
+</body>
+</html>
